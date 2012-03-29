@@ -115,20 +115,13 @@ function LuaBootStrap (G) {
 	// could also be done by lua_core["require"] = function () {...}
 	G.str['require'] = function (path) {
 		if (path == "socket.http") { return LoveRequireSocketHTTP(); }
-		if (path == "shaders") { return LoveRequireShaders(); }
-		if (path.substr(-4) != ".lua") path += ".lua"; // require automatically appends .lua to the filepath
-		//~ MainPrint("require "+path);
-		RunLuaFromPath(path);
-		//~ MainPrint("require done.");
-		//~ throw ("'require' not yet implemented ("+path+")");
-		//~ lua_require(G, path);
+		if (path.substr(-4) == ".lua") path = path.slice(0, -4); // require automatically appends .lua to the filepath
+		path = path.replace(/\./g, "/");
+		if (LoveFS_isFile(path + "/init.lua"))
+			RunLuaFromPath(path + "/init.lua");
+		else
+			RunLuaFromPath(path + ".lua");
 	};
-}
-
-// require "shaders"  mari0 main.lua... might be shaders/init.lua ? file_exists()
-function LoveRequireShaders () {
-	NotImplemented('require("shaders")');
-	return LuaNil;
 }
 
 // http = require("socket.http")
