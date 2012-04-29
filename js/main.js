@@ -1,6 +1,6 @@
 var kUseHTMLConsole = false; // if false, output is still visible in firefox javascript console
 var G = null; // the big lua _G containing lua global vars
-var gFrameWait = 1000/40; // TODO: adjust for performance ?
+var gFrameWait = 1000/60; // TODO: adjust for performance ?
 var gMyTicks = MyGetTicks();
 var gSecondsSinceLastFrame = 0;
 var gMaxHTMLConsoleLines = 10;
@@ -19,6 +19,18 @@ var LuaNoParam = [];
 var gEnableLove080 = false;
 var kProfileReportIfTimeAbove = 1*1000; ///< msec
 var kProfileReportIfTimeAbove = 0.1*1000; ///< msec
+
+function lua_precompile (code) { 
+	// >>> love.filesystem.load("test.print.myvar.lua")() <<< ->  >>> (love.filesystem.load("test.print.myvar.lua"))() <<<
+	code = code.replace(/(love.filesystem.load)\(([^\)]*)\)\(\)/g,"($1($2))()");
+	//~ code = code.replace(/([\w\.]+)\(([^\)]*)\)\(\)/g,"($1($2))()");
+	return code;
+}
+
+_lua_load_orig = lua_load; 
+// overwrite original lua_load for precompile fixes
+lua_load = function (chunk, chunkname) { return _lua_load_orig(lua_precompile(chunk), chunkname); }
+
 
 /// output in html, for fatal error messages etc, also users that don't have webdev console open can see them
 function MainPrintToHTMLConsole () {
@@ -67,11 +79,42 @@ function Love_Enable_Experimental_080 () {
 	gEnableLove080 = true;
 }
 
+
+function LuaOverrideLibs () {
+	//~ string.match (s, pattern [, init])
+	//~ Looks for the first match of pattern in the string s. If it finds one, then match returns the captures from the pattern; otherwise it returns nil. 
+	//~ If pattern specifies no captures, then the whole match is returned. 
+	//~ A third, optional numerical argument init specifies where to start the search; its default value is 1 and may be negative. 
+	//~ lua_libs["string"]["match"] = function (s,pattern,init) {} -- idea: hard to transform regexp, try porting c code? 
+
+	//~ arr=s.match(regexp) apply regexp
+	//~ s2 = s.replace(regexp,replace_txt) apply regexp and replace
+	//~ pos = s.search(regexp) search with regexp  : return -1 if not found, otherwise pos of first match
+	//~ slice() get part of a string
+	// s.indexOf(char_or_string,optional_startindex) == -1
+	// http://de.selfhtml.org/javascript/objekte/regexp.htm
+	// luanote : set : a single character class followed by `-´, which also matches 0 or more repetitions of characters in the class. Unlike `*´, these repetition items will always match the shortest possible sequence; 
+	// luanote : %bxy, where x and y are two distinct characters; such item matches strings that start with x, end with y, and where the x and y are balanced. This means that, if one reads the string from left to right, counting +1 for an x and -1 for a y, the ending y is the first y where the count reaches 0. For instance, the item %b() matches expressions with balanced parentheses. 
+	
+	// probably best to 
+	
+	
+	//~ lua_libs["string"]["find"] = function (s,pattern,init) { ... }
+	
+	//~ Returns an iterator function that, each time it is called, returns the next captures from pattern over string s.
+	//~ If pattern specifies no captures, then the whole match is produced in each call.
+	//~ lua_libs["string"]["gmatch"] = function (s, pattern) { return NotImplemented("string.gmatch"); }
+	//~ lua_libs["string"]["gsub"] = function (s, pattern) { return NotImplemented("string.gsub"); }
+}
+
 /// called after lua code has finished loading and is about to be run, where environment has already been setup
 /// when calling the result from lua_load, LuaBootStrap is exectuted between lua environment setup and the parsed code
+
+
 function LuaBootStrap (G) {
 	//~ G.bla = (G.bla ? G.bla : 0) + 1; // check if G is preserved across multiple load_chunks
 	//~ MainPrint("LuaBootStrap called "+G.bla);
+	if (G.str['love'] != null) return; // bootstrap already done
 	G.str['love'] = lua_newtable();
 	
 	if (gEnableLove080) {
@@ -95,7 +138,7 @@ function LuaBootStrap (G) {
 	G.str['love'].str['mousereleased']	= function () {};
 	G.str['love'].str['quit']	= function () {};
 	G.str['table'].str['getn']	= function (t) { return [lua_len(t)]; }; ///< table.getn for backwards compatibility
-
+	
 	// register love api functions
 	Love_Audio_CreateTable(G);
 	Love_Event_CreateTable(G);
@@ -110,18 +153,89 @@ function LuaBootStrap (G) {
 	Love_Sound_CreateTable(G);
 	Love_Thread_CreateTable(G);
 	Love_Timer_CreateTable(G);
+	Love_Web_CreateTable(G); // web api
 	
 	// replace default lua.js require
 	// could also be done by lua_core["require"] = function () {...}
 	G.str['require'] = function (path) {
+		// builtin libs
 		if (path == "socket.http") { return LoveRequireSocketHTTP(); }
-		if (path.substr(-4) == ".lua") path = path.slice(0, -4); // require automatically appends .lua to the filepath
+		// path transformations
+		if (path.substr(-4) == ".lua") path = path.slice(0, -4); // require automatically appends .lua to the filepath later, remove it here
 		path = path.replace(/\./g, "/");
-		if (LoveFS_isFile(path + "/init.lua"))
-			RunLuaFromPath(path + "/init.lua");
-		else
-			RunLuaFromPath(path + ".lua");
+		
+		var initpath = path+"/init.lua"; // require("shaders") -> shaders/init.lua 
+		if (LoveFS_exists(initpath)) 
+				return RunLuaFromPath(initpath);
+		else	return RunLuaFromPath(path + ".lua"); // require("bla") -> bla.lua
+		
+		//~ NOTE: replaces parser lib lua_require(G, path);
 	};
+	G.str['dofile'] = function (path) {
+		return RunLuaFromPath(path);
+	};
+}
+
+/// init lua api
+function Love_Web_CreateTable (G) {
+	var t = lua_newtable();
+	G.str['love'].str['web'] = t;
+	t.str['javascript']		= function (code) { return [eval(code)]; }
+	
+	/// e.g. if (string.find(love.web.getAgent(),"MSIE")) then ...mp3... else ...ogg... end
+	t.str['getAgent']		= function (code) { return [navigator.userAgent]; }
+	t.str['setMaxFPS']		= function (fps) { gFrameWait = (fps && fps > 0)?(1000/fps):1; }
+	t.str['showPreCompiledJS']	= function (path) { showPreCompiledJS(path); }
+	t.str['browserIsFirefox']	= function () { return [gAgent_Firefox]; }
+	t.str['browserIsChrome']	= function () { return [gAgent_Chrome]; }
+	
+	//~ -- firefox browser= Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:11.0) Gecko/20100101 Firefox/11.0 @ http://localhost/love-webplayer/js/lua-parser.js:19
+	//~ -- chromium browser= Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.19 (KHTML, like Gecko) Ubuntu/11.04 Chromium/18.0.1025.151 Chrome/18.0.1025.151 Safari/535.19
+	
+	gAgent_Firefox = navigator.userAgent.indexOf("Firefox") != -1;
+	gAgent_Chrome = navigator.userAgent.indexOf("Chrome") != -1;
+	MainPrint("browser: firefox,chrome=",gAgent_Firefox,gAgent_Chrome);
+}
+
+
+function showPreCompiledJS (path) {
+	var element = document.getElementById('output');
+	if (!element) { MainPrint("showPreCompiledJS: output not found"); return; } // perhaps during startup
+	var areaid = "precompile_out";
+	element.innerHTML += encodeURI(path)+"<br/>";
+	element.innerHTML += "<textarea id='"+areaid+"' style='width:80%;height:100px'/>\n";
+	var element = document.getElementById(areaid);
+	if (!element) { MainPrint("showPreCompiledJS: textarea not found"); return; } // perhaps during startup
+	
+	// load lua
+	gLastLoadedLuaCode = false;
+	MyProfileStart("RunLuaFromPath:download:"+path);
+	UtilAjaxGet(path,function (luacode) { gLastLoadedLuaCode = luacode; },true);
+	var luacode = gLastLoadedLuaCode;
+	
+	// parse&compile to js
+	if (luacode != null) {
+		luacode = lua_precompile(luacode);
+		var jscode = "";
+		
+		jscode += "// precompiled lua-js code for "+path+", run with:\n";
+		jscode += "// if (MyPreCompiledJS) MyPreCompiledJS();\n";
+		jscode += "// or similar\n";
+		jscode += "function MyPreCompiledJS() {\n" +
+		lua_parser.parse(luacode) + "\n" +
+		"  return G;\n" +
+		"};\n"
+		
+		// write to textarea
+		element.value = jscode;
+	}
+	//~ MainPrint("showPreCompiledJS: code written");
+}
+
+// require "shaders"  mari0 main.lua... might be shaders/init.lua ? file_exists()
+function LoveRequireShaders () {
+	NotImplemented('require("shaders")');
+	return LuaNil;
 }
 
 // http = require("socket.http")
@@ -166,7 +280,7 @@ function RunLuaFromPath (path, safe) {
 		MyProfileEnd();
 		// error during run, display infos as good as possible, lua-stacktrace would be cool here, but hard without line numbers
 		if (!safe)
-			LoveFatalError("error during "+path+" : "+String(e)+" : "+PrepareExceptionStacktraceForOutput(e)); 
+			LoveFatalError("error during "+path+" : "+String(e)+" :\n"+PrepareExceptionStacktraceForOutput(e)); 
 	}
 }
 
@@ -190,7 +304,7 @@ function call_love_callback_guarded (callbackname,fargs) {
 	try {
 		return lua_call(G.str['love'].str[callbackname],fargs);
 	} catch (e) {
-		LoveFatalError("error during love."+callbackname+"("+String(fargs)+") : "+String(e)+" : "+PrepareExceptionStacktraceForOutput(e));
+		LoveFatalError("error during love."+callbackname+"("+String(fargs)+") : "+String(e)+" :\n"+PrepareExceptionStacktraceForOutput(e));
 	}
 }
 
@@ -215,7 +329,7 @@ function call_lua_function(name, fargs)
 	}
 	catch (e)
 	{
-		LoveFatalError("Error during "+name+"("+String(fargs)+") : "+String(e)+" : "+PrepareExceptionStacktraceForOutput(e));
+		LoveFatalError("Error during "+name+"("+String(fargs)+") : "+String(e)+" :\n"+PrepareExceptionStacktraceForOutput(e));
 	}
 }
 
@@ -240,7 +354,7 @@ function call_lua_function_safe(name, fargs)
 	}
 	catch (e)
 	{
-		LoveFatalError("Error during "+name+"("+String(fargs)+") : "+String(e)+" : "+PrepareExceptionStacktraceForOutput(e));
+		LoveFatalError("Error during "+name+"("+String(fargs)+") : "+String(e)+" :\n"+PrepareExceptionStacktraceForOutput(e));
 	}
 }
 
@@ -380,7 +494,8 @@ function MainRunAfterPreloadFinished () {
 	// call MainStep() every frame
 	window.setInterval("MainStep()", gFrameWait); // TODO: http://www.khronos.org/webgl/wiki/FAQ#What_is_the_recommended_way_to_implement_a_rendering_loop.3F
 	//~ window.requestAnimFrame(MainStep); // doesn't work ?
-
+	
+	LuaOverrideLibs();
 	G = lua_load("", "stub")();
 	RunLuaFromPath("conf.lua", true); // run conf.lua
 	gLoveConf = lua_newtable2({

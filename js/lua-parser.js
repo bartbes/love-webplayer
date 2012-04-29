@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-
+var gPrintParserDebug;
 var lua_print = function () {
   try {
     console.log.apply(console, arguments);
@@ -83,7 +83,7 @@ function createFunction(args, body, hasVarargs) {
   var result = "(function (" + args.join(", ") + ") {\n" +
     "  var tmp;\n";
   if (hasVarargs) {
-    result += "  var varargs = lua_newtable(slice(arguments, " + args.length + "));\n";
+    result += "  var varargs = slice(arguments, " + args.length + ");\n";
   }
   return result +
     body.simple_form + "\n" +
@@ -226,7 +226,7 @@ case 13:
     }
   
 break;
-case 14: this.$ = {single: $$[$0] + "[0]", multi: $$[$0]}; 
+case 14: this.$ = {single: $$[$0] + "[0]", endmulti: $$[$0]}; 
 break;
 case 15: this.$ = {single: "(" + $$[$0-1].single + ")", simple_form: $$[$0-1].simple_form}; 
 break;
@@ -473,9 +473,9 @@ case 40: this.$ = $$[$0-2].concat([$$[$0]]);
 break;
 case 41: this.$ = [$$[$0]]; 
 break;
-case 42: this.$ = {exps: $$[$0-2].exps.concat([$$[$0].single]), endmulti: $$[$0].multi}; 
+case 42: this.$ = {exps: $$[$0-2].exps.concat([$$[$0].single]), endmulti: $$[$0].endmulti}; 
 break;
-case 43: this.$ = {exps: [$$[$0].single], endmulti: $$[$0].multi}; 
+case 43: this.$ = {exps: [$$[$0].single], endmulti: $$[$0].endmulti}; 
 break;
 case 44: this.$ = $$[$0-2].concat([setLocal($$[$0])]); 
 break;
@@ -588,7 +588,7 @@ case 74:
 break;
 case 75: this.$ = {single: 'lua_len(' + $$[$0].single + ')'}; 
 break;
-case 76: this.$ = {single: 'varargs[0]', multi: 'varargs'}; 
+case 76: this.$ = {single: 'varargs[0]', endmulti: 'varargs'}; 
 break;
 case 77: this.$ = "lua_newtable()"; 
 break;
@@ -606,7 +606,7 @@ case 79: this.$ = createFunction([], $$[$0-2]);
 break;
 case 80: this.$ = createFunction($$[$0-4], $$[$0-2]); 
 break;
-case 81: this.$ = createFunction([], $$[$0-1], true); 
+case 81: this.$ = createFunction([], $$[$0-2], true); 
 break;
 case 82: this.$ = createFunction($$[$0-6], $$[$0-2], true); 
 break;
@@ -626,7 +626,17 @@ case 89: this.$ = {prefixexp: $$[$0-3].single, access: $$[$0-1].single};
 break;
 case 90: this.$ = {prefixexp: $$[$0-2].single, access: "'" + $$[$0] + "'"}; 
 break;
-case 91: this.$ = "lua_call(" + $$[$0-1].single + ", " + getTempDecl($$[$0]) + ")"; 
+case 91: this.$ = "lua_call( /*bla!*/ " + $$[$0-1].single + ", " + getTempDecl($$[$0]) + ", "+longStringToString($$[$0-1].single)+")";
+	//~ NOTE : encodeURI->longStringToString
+	//~ if (gPrintParserDebug != null) {   
+	//~ MainPrint("---------------");
+	//~ MainPrint("create table.field call called=",$$[$0-1]);
+	//~ MainPrint("create table.field call params",[yytext,yyleng,yylineno,yy,yystate]);
+	//~ MainPrint("create table.field call yy.lexer.showPosition=",yy.lexer.showPosition());
+	//~ MainPrint("create table.field call $0=",$0);
+	//~ MainPrint("create table.field call $$=",$$);
+	//~ MainPrint("create table.field call _$=",_$);
+	//~ }
 break;
 case 92: this.$ = "lua_mcall(" + $$[$0-3].single + ", '" + $$[$0-1] + "', " + getTempDecl($$[$0]) + ")"; 
 break;
@@ -1088,7 +1098,7 @@ case 57:return 7;
 break;
 }
 };
-lexer.rules = [/^\s+/,/^--\[\[(.|\n|\r)*?\]\]/,/^--.*/,/^0x[0-9a-fA-f]+/,/^\d+(\.\d*)?([eE]-?\d+)?/,/^\.\d+([eE]-?\d+)?/,/^"(\\"|[^\"])*"/,/^'(\\'|[^'])*'/,/^\[\[(.|\n|\r)*?\]\]/,/^:/,/^;/,/^\(/,/^\)/,/^\[/,/^\]/,/^\{/,/^\}/,/^\+/,/^-/,/^\*/,/^\//,/^%/,/^\^/,/^==/,/^=/,/^~=/,/^<=/,/^>=/,/^</,/^>/,/^#/,/^,/,/^\.\.\./,/^\.\./,/^\./,/^not\b/,/^and\b/,/^or\b/,/^true\b/,/^false\b/,/^nil\b/,/^function\b/,/^until\b/,/^do\b/,/^end\b/,/^while\b/,/^if\b/,/^then\b/,/^elseif\b/,/^else\b/,/^for\b/,/^local\b/,/^repeat\b/,/^in\b/,/^return\b/,/^break\b/,/^[a-zA-Z_][a-zA-Z0-9_]*/,/^$/];
+lexer.rules = [/^\s+/,/^--\[\[(.|\n|\r)*?\]\]/,/^--.*/,/^0x[0-9a-fA-f]+/,/^\d+(\.\d*)?([eE]-?\d+)?/,/^\.\d+([eE]-?\d+)?/,/^"(\\.|[^"])*"/,/^'(\\.|[^'])*'/,/^\[\[(.|\n|\r)*?\]\]/,/^:/,/^;/,/^\(/,/^\)/,/^\[/,/^\]/,/^\{/,/^\}/,/^\+/,/^-/,/^\*/,/^\//,/^%/,/^\^/,/^==/,/^=/,/^~=/,/^<=/,/^>=/,/^</,/^>/,/^#/,/^,/,/^\.\.\./,/^\.\./,/^\./,/^not\b/,/^and\b/,/^or\b/,/^true\b/,/^false\b/,/^nil\b/,/^function\b/,/^until\b/,/^do\b/,/^end\b/,/^while\b/,/^if\b/,/^then\b/,/^elseif\b/,/^else\b/,/^for\b/,/^local\b/,/^repeat\b/,/^in\b/,/^return\b/,/^break\b/,/^[a-zA-Z_][a-zA-Z0-9_]*/,/^$/];
 lexer.conditions = {"INITIAL":{"rules":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57],"inclusive":true}};return lexer;})()
 parser.lexer = lexer;
 return parser;
@@ -1139,7 +1149,7 @@ function ensure_notarraymode(table) {
     var newuints = {};
     for (var i in table.uints) {
       if (table.uints[i] != null) {
-        newuints[i + 1] = table.uints[i];
+        newuints[i - -1] = table.uints[i];
       }
     }
     table.uints = newuints;
@@ -1172,7 +1182,7 @@ function lua_assertfloat(n) {
   return result;
 }
 function lua_newtable(autoIndexList) {
-  var result = {str: {}, uints: {}, floats: {}, bool: {}};
+  var result = {str: {}, uints: {}, floats: {}, bool: {}, objs: []};
   for (var i = 1; i < arguments.length - 1; i += 2) {
     var value = arguments[i + 1];
     if (value == null) {
@@ -1184,6 +1194,9 @@ function lua_newtable(autoIndexList) {
         result.str[key] = value;
         break;
       case "number":
+        if (key != key) {
+          throw new Error("Table index is NaN");
+        }
         if (key > 0 && (key | 0) == key) {
           result.uints[key] = value;
         } else {
@@ -1192,6 +1205,28 @@ function lua_newtable(autoIndexList) {
         break;
       case "boolean":
         result.bool[key] = value;
+        break;
+      case "object":
+        if (key == null) {
+          throw new Error("Table index is nil");
+        }
+        var bFound = false;
+        for (var i in result.objs) {
+          if (result.objs[i][0] === key) {
+            if (value == null) {
+              result.objs.splice(i, 1); // remove element [i]
+            } else {
+              bFound = true;
+              // modify/overwrite existing entry
+              // (could happen that same key is used twice in autoIndexList)
+              result.objs[i][1] = value; 
+            }
+            break;
+          }
+        }
+        if (!bFound) {
+          result.objs.push([key,value]); // add new entry
+        }
         break;
       default:
         throw new Error("Unsupported type for table: " + (typeof key));
@@ -1215,7 +1250,7 @@ function lua_newtable2(str) {
   for (var i in str) {
     str_copy[i] = str[i];
   }
-  return {str: str_copy, uints: {}, floats: {}, bool: {}};
+  return {str: str_copy, uints: {}, floats: {}, bool: {}, objs: {}};
 }
 function lua_len(op) {
   if (typeof op == "string") {
@@ -1254,10 +1289,11 @@ function lua_rawcall(func, args) {
     throw e;
   }
 }
-function lua_call(func, args) {
+function lua_call(func, args, origin) {
   if (typeof func == "function") {
     return lua_rawcall(func, args);
   } else {
+    if (func == null) throw new Error("attempt to call nil ("+String(origin)+")");
     var h = func.metatable && func.metatable.str["__call"];
     if (h != null) {
       return lua_rawcall(h, [func].concat(args));
@@ -1267,7 +1303,9 @@ function lua_call(func, args) {
   }
 }
 function lua_mcall(obj, methodname, args) {
-  return lua_call(lua_tableget(obj, methodname), [obj].concat(args));
+  var fun = lua_tableget(obj, methodname);
+  if (fun == null) throw new Error("attempt to call method '"+String(methodname)+"' (a nil value)");
+  return lua_call(fun, [obj].concat(args));
 }
 function lua_eq(op1, op2) {
   if (typeof op1 != typeof op2) {
@@ -1432,6 +1470,9 @@ function lua_rawget(table, key) {
     case "string":
       return table.str[key];
     case "number":
+      if (key != key) {
+        throw new Error("Table index is NaN");
+      }
       if (key > 0 && (key | 0) == key) {
         if (table.arraymode) {
           return table.uints[key - 1];
@@ -1443,6 +1484,16 @@ function lua_rawget(table, key) {
       }
     case "boolean":
       return table.bool[key];
+    case "object":
+      if (key == null) {
+        throw new Error("Table index is nil");
+      }
+      for (var i in table.objs) {
+        if (table.objs[i][0] == key) {
+          return table.objs[i][1];
+        }
+      }
+	break;
     default:
       throw new Error("Unsupported key for table: " + (typeof key));
   }
@@ -1458,6 +1509,9 @@ function lua_rawset(table, key, value) {
       }
       break;
     case "number":
+      if (key != key) {
+        throw new Error("Table index is NaN");
+      }
       if (key > 0 && (key | 0) == key) {
         ensure_notarraymode(table);
         if (value == null) {
@@ -1478,6 +1532,26 @@ function lua_rawset(table, key, value) {
         delete table.bool[key];
       } else {
         table.bool[key] = value;
+      }
+      break;
+    case "object":
+      if (key == null) {
+        throw new Error("Table index is nil");
+      }
+      var bFound = false;
+      for (var i in table.objs) {
+        if (table.objs[i][0] == key) {
+          if (value == null) {
+            table.objs.splice(i,1); // remove element [i]
+          } else {
+            bFound = true;
+            table.objs[i][1] = value; // modifiy/overwrite existing entry
+          }
+          break;
+        }
+      }
+      if (!bFound) {
+        table.objs.push([key,value]); // add new entry
       }
       break;
     default:
@@ -1506,7 +1580,7 @@ function lua_tableget(table, key) {
   if (typeof h == "function") {
     return lua_rawcall(h, [table, key])[0];
   } else {
-    return lua_rawget(h, key);
+    return lua_tableget(h, key);
   }
 }
 function lua_tableset(table, key, value) {
@@ -1514,9 +1588,6 @@ function lua_tableset(table, key, value) {
     throw new Error("Table is null");
   }
   if (typeof table == "object") {
-    if (key == null || (typeof key == "number" && isNaN(key))) {
-      throw new Error("Key cannot be NaN or null");
-    }
     var v = lua_rawget(table, key);
     if (v != null) {
       lua_rawset(table, key, value);
@@ -1536,7 +1607,7 @@ function lua_tableset(table, key, value) {
   if (typeof h == "function") {
     lua_rawcall(h, [table, key, value]);
   } else {
-    lua_rawset(h, key, value);
+    lua_tableset(h, key, value);
   }
 }
 function lua_concat(op1, op2) {
@@ -1642,6 +1713,9 @@ var lua_core = {
     }
     for (i in table.bools) {
       props.push(i === "true" ? true : false);
+    }
+    for (i in table.objs) {
+      props.push(table.objs[i][0]);
     }
 
     // okay, so I'm faking it here
@@ -1844,7 +1918,7 @@ lua_libs["math"] = {
     return [(Math.exp(x) + Math.exp(-x)) / 2];
   },
   "deg": function (x) {
-    return [x * (Math.PI / 180)];
+    return [x * (180 / Math.PI)];
   },
   "exp": function (x) {
     return [Math.exp(x)];
@@ -1883,7 +1957,7 @@ lua_libs["math"] = {
     return [Math.pow(x, y)];
   },
   "rad": function (x) {
-    return [x * (180 / Math.PI)];
+    return [x * (Math.PI / 180)];
   },
   "sin": function (x) {
     return [Math.sin(x)];
@@ -2127,11 +2201,24 @@ lua_libs["string"] = {
   }
 };
 
+// add string functions to every string
+String.prototype["metatable"] = lua_newtable(null, "__index", lua_newtable2(lua_libs["string"]));
+
 // table
 lua_libs["table"] = {
   "concat": function (table, sep, i, j) {
-    // TODO
-    not_supported();
+    ensure_arraymode(table);
+    if (sep == null) {
+      sep = "";
+    }
+    if (i != null) {
+      if (j == null) {
+        j = table.uints.length;
+      }
+      return [table.uints.slice(i - 1, j).join(sep)];
+    } else {
+      return [table.uints.join(sep)];
+    }
   },
   "insert": function (table, pos, value) {
     ensure_arraymode(table);

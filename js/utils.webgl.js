@@ -82,7 +82,7 @@ function doLoadImageTexture(gl, image, texture, bPixelArt)
 {
 	//~ gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // chrome test
 
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.bindTexture(gl.TEXTURE_2D, texture); gLastGLTexture = texture;
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 	
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -94,7 +94,16 @@ function doLoadImageTexture(gl, image, texture, bPixelArt)
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 	}
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindTexture(gl.TEXTURE_2D, null); gLastGLTexture = null;
+}
+
+function updateTextureParams (gl, iTexID, fmin,fmag,wraph,wrapv) {
+    gl.bindTexture(gl.TEXTURE_2D, iTexID); gLastGLTexture = iTexID;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, fmin);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, fmag);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wraph);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapv);
+    gl.bindTexture(gl.TEXTURE_2D, null); gLastGLTexture = null;
 }
 
 
@@ -181,7 +190,7 @@ function UpdateGlFloatBuffer (gl,buffer,arr,mode) { // arr= [1,2,3,...] mode= gl
 	
 	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr),mode); // WebGLFloatArray->Float32Array
-	MyCheckGLError("UpdateGlFloatBuffer");
+	//~ MyCheckGLError("UpdateGlFloatBuffer");
 	// TODO : using new Float32Array all the time will drain memory?
 	// usage example:
 	// gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -228,7 +237,7 @@ function cRenderable (gl,texture,arr_vertex,arr_index) {
 	}
 	
 	this.Draw = function (gl) {
-		gl.bindTexture(gl.TEXTURE_2D, this.texture);
+		gl.bindTexture(gl.TEXTURE_2D, this.texture); gLastGLTexture = this.texture;
 		//~ gl.enableVertexAttribArray(0); // TODO : removed durign chrome testung
 		//~ gl.enableVertexAttribArray(1); // TODO : removed durign chrome testung
 		// old : shaderProgram.vertexPositionAttribute = 0
@@ -247,27 +256,93 @@ function cRenderable (gl,texture,arr_vertex,arr_index) {
 
 // ***** ***** ***** ***** ***** Matrix utility functions
 
-/*
-function loadIdentity() {
-  mvMatrix = Matrix.I(4);
+/// returns an independent copy of the 4x4 matrix
+function matrix4Clone(m) { return m.slice(0); }
+
+/// returns a 4x4 identity matrix
+function matrix4GetIdentity() { return [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ]; }
+
+/// returns a 4x4 matrix with scale & translate
+function matrix4GetTranslateScale(tx,ty,tz, sx,sy,sz) { return [ sx,0,0,0, 0,sy,0,0, 0,0,sz,0, tx,ty,tz,1 ]; }
+
+/// modifies m  (m x n 4x4 matrix mult)
+function matrix4Mult(m,n) {
+	var o = matrix4Clone(m); // copy of old state
+	for (var i=0;i<4;++i) for (var j=0;j<4;++j) { var sum = 0; for (var c=0;c<4;++c) sum += o[i*4+c] * n[c*4+j]; m[i*4+j] = sum; }
 }
 
-function multMatrix(m) {
-  mvMatrix = mvMatrix.x(m);
+/// modifies m
+function matrixSet(m,n) { for (var i=0;i<4*4;++i) m[i] = n[i]; }
+
+/// modifies m
+function matrix4SetIdentity(m) { for (var i=0;i<4;++i) for (var j=0;j<4;++j) m[i*4+j] = (i==j)?1:0; }
+
+/// modifies m
+function matrix4Scale(m,sx,sy,sz) {
+	// optimized version of: matrix4Mult(m,matrix4GetTranslateScale(0,0,0,sx,sy,sz));
+	m[0*4+0] *= sx; m[0*4+1] *= sy; m[0*4+2] *= sz;
+	m[1*4+0] *= sx; m[1*4+1] *= sy; m[1*4+2] *= sz;
+	m[2*4+0] *= sx; m[2*4+1] *= sy; m[2*4+2] *= sz;
+	m[3*4+0] *= sx; m[3*4+1] *= sy; m[3*4+2] *= sz;
 }
 
-function mvTranslate(v) {
-  multMatrix(Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4());
+/// modifies m
+function matrix4Translate(m,tx,ty,tz) {
+	//~ matrix4Mult(m,matrix4GetTranslateScale(tx,ty,tz,1,1,1)); // optimized version below
+	//~ matrixPrintOptimizeMult(matrix4GetTranslateScale("tx","ty","tz",1,1,1));
+	m[0*4+0] += m[0*4+3] * tx;
+	m[0*4+1] += m[0*4+3] * ty;
+	m[0*4+2] += m[0*4+3] * tz;
+	m[1*4+0] += m[1*4+3] * tx;
+	m[1*4+1] += m[1*4+3] * ty;
+	m[1*4+2] += m[1*4+3] * tz;
+	m[2*4+0] += m[2*4+3] * tx;
+	m[2*4+1] += m[2*4+3] * ty;
+	m[2*4+2] += m[2*4+3] * tz;
+	m[3*4+0] += m[3*4+3] * tx;
+	m[3*4+1] += m[3*4+3] * ty;
+	m[3*4+2] += m[3*4+3] * tz;
 }
 
-function setMatrixUniforms() {
-  //~ var pUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
-  //~ gl.uniformMatrix4fv(pUniform, false, new WebGLFloatArray(perspectiveMatrix.flatten()));
 
-  //~ var mvUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
-  //~ gl.uniformMatrix4fv(mvUniform, false, new WebGLFloatArray(mvMatrix.flatten()));
-  
-  var mvUniform = gl.getUniformLocation(shaderProgram, "u_modelViewProjMatrix");
-  gl.uniformMatrix4fv(mvUniform, false, new WebGLFloatArray(mvMatrix.flatten()));
+var matrixPrintOptimizeMult_AlreadyPrinted = false; 
+function matrixPrintOptimizeMult (n) {
+	if (matrixPrintOptimizeMult_AlreadyPrinted) return;
+	matrixPrintOptimizeMult_AlreadyPrinted = true;
+	var out = "";
+	for (var i=0;i<4;++i) for (var j=0;j<4;++j) {
+		var oute = "m["+i+"*4+"+j+"] = ";
+		var first = true;
+		for (var c=0;c<4;++c) {
+			if (n[c*4+j] != 0) {
+				if (!first) oute += " + "; first = false;
+				oute += "o["+i+"*4+"+c+"]";
+				if (n[c*4+j] != 1) oute += " * "+n[c*4+j];
+			}
+		}
+		if (first) oute += "0";
+		oute += ";\n";
+		
+		// skip if just  x=x;
+		if (oute == "m["+i+"*4+"+j+"] = o["+i+"*4+"+j+"];\n") oute = ""; // unchanged
+		
+		// "x = x + bla" -> "x += bla"
+		var selfadd = "m["+i+"*4+"+j+"] = o["+i+"*4+"+j+"] + ";
+		if (oute.substr(0,selfadd.length) == selfadd) oute = "m["+i+"*4+"+j+"] += "+oute.substr(selfadd.length);
+		
+		// output
+		out += oute;
+	}
+	MainPrint(out);
 }
-*/
+
+//	m[i*4+j]      	[  1, 0, 0, 0 ]  ---> j+
+//	              	[  0, 1, 0, 0 ]
+//	              	[  0, 0, 1, 0 ]
+//	              	[ tx,ty,tz, 1 ]
+//	[ o, o, o, o ] 
+//	[ o, o, o, o ]	
+//	[ o, o, o, o ]	
+//	[ o, o, o, o ]	
+//    |
+//   \|/ i		

@@ -32,7 +32,7 @@ function Love_Graphics_CreateTable (G) {
 	// note: pass through variable argument list ? myfun.apply(null,arguments) http://stackoverflow.com/questions/676721/calling-dynamic-function-with-dynamic-parameters-in-javascript
 	
 	// love.graphics.newImage(path)
-	t.str['newImage']			= function (path) { return [Love_Graphics_MakeImageHandle(new cLoveImage(path))]; }
+	t.str['newImage']			= function (a) { return [Love_Graphics_MakeImageHandle(new cLoveImage(a))]; }
 	
 	// font = love.graphics.newImageFont( image, glyphs )
 	// font = love.graphics.newImageFont( filename, glyphs )
@@ -58,6 +58,7 @@ function Love_Graphics_CreateTable (G) {
 	t.str['setBackgroundColor']	= function (r,g,b,a) { 
 		if ((typeof r) != "number") {
 			var rgb = r;
+			ensure_arraymode(rgb);
 			r = rgb.uints[0];
 			g = rgb.uints[1];
 			b = rgb.uints[2];
@@ -72,6 +73,7 @@ function Love_Graphics_CreateTable (G) {
 		//  MainPrint("graphics.setColor called");
 		if ((typeof r) != "number") {
 			var rgb = r;
+			ensure_arraymode(rgb);
 			r = rgb.uints[0];
 			g = rgb.uints[1];
 			b = rgb.uints[2];
@@ -110,24 +112,34 @@ function Love_Graphics_CreateTable (G) {
 	t.str['rectangle']			= function (mode, x, y, w, h) { renderRectangle(mode, x, y, w, h); return LuaNil; }
 	t.str['circle']				= function (mode, x, y, radius, segments) { renderCircle(mode, x, y, radius, segments || 10); return LuaNil; }
 	t.str['triangle']			= function (mode, x1, y1, x2, y2, x3, y3) { renderTriangle(mode, x1, y1, x2, y2, x3, y3); return LuaNil; }
-	t.str['polygon']			= function (mode) { renderPolygon(mode,arguments.slice(1)); return LuaNil; }
+	t.str['polygon']			= function () { renderPolygon(arguments[0],arguments); return LuaNil; }
 	t.str['quad']				= function (mode, x1, y1, x2, y2, x3, y3, x4, y4) { renderQuad(mode, x1, y1, x2, y2, x3, y3, x4, y4); return LuaNil; }
 	t.str['line']				= function (x1, y1, x2, y2) { if (arguments.length > 4) renderPolyLine(arguments); else renderLine(x1, y1, x2, y2); return LuaNil; }
 	t.str['point']				= function (x,y) { renderPoint(x, y); return LuaNil; }
 	t.str['clear']				= function () { gl.clear(gl.COLOR_BUFFER_BIT); return LuaNil; } // 	Clears the screen to background color.
 	
-	t.str['reset']				= function () { return NotImplemented(pre+'reset'); }
-	t.str['scale']				= function (sx,sy,sz) { GLModelViewScale(sx || 1,sy || 1,sz || 1); return LuaNil; }
-	t.str['translate']			= function (tx,ty,tz) { GLModelViewTranslate(tx || 0,ty || 0,tz || 0); return LuaNil; }
+	t.str['reset']				= function () { 
+		//~ Calling reset makes the 
+		setColor(255,255,255,255); // current drawing color white, 
+		gl.clearColor(0,0,0,1); // the current background color black, 
+		// the window title empty 
+		setScissor();// and removes any scissor settings. 
+		// It sets the BlendMode to alpha and ColorMode to modulate. 
+		// It also sets both the point and line drawing modes to smooth and their sizes to 1.0 . 
+		// Finally, it removes any stipple settings. 
+		return NotImplemented(pre+'reset');
+	}
+	t.str['scale']				= function (sx,sy) { GLModelViewScale(sx || 1,sy || 1,1); return LuaNil; }
+	t.str['translate']			= function (tx,ty) { GLModelViewTranslate(tx || 0,ty || 0,0); return LuaNil; }
 	t.str['rotate']				= function () { return NotImplemented(pre+'rotate'); }
-	t.str['pop']				= function () { return NotImplemented(pre+'pop'); }
-	t.str['push']				= function () { return NotImplemented(pre+'push'); }
+	t.str['push']				= function () { GLModelViewPush(); }
+	t.str['pop']				= function () { GLModelViewPop(); }
 	
 	t.str['getWidth']			= function () { return [gMyCanvasWidth]; }
 	t.str['getHeight']			= function () { return [gMyCanvasHeight]; }
 	
-	t.str['print']				= function (s, x, y, r, sx, sy)		{ if (mFont != null) mFont.print(s, x, y, r||0, sx||1, (sy||sx)||1 ); return LuaNil; }
-	t.str['printf']				= function (s, x, y, limit, align )	{ if (mFont != null) mFont.printf(s, x, y, limit, align || "left"); return LuaNil; }
+	t.str['print']				= function (s, x, y, r, sx, sy)		{ if (mFont != null) mFont.print(String(s), x, y, r||0, sx||1, (sy||sx)||1 ); return LuaNil; }
+	t.str['printf']				= function (s, x, y, limit, align )	{ if (mFont != null) mFont.printf(String(s), x, y, limit, align || "left"); return LuaNil; }
 	t.str['setFont']			= function (x) { mFont = (x == undefined) ? mDefaultFont : x._data; return LuaNil; }
 	//~ t.str['setFont']			= function (x) { mFont = mDefaultFont; return LuaNil; }
 	
@@ -247,13 +259,12 @@ function Love_Graphics_Step_End() {
 notes
 var lighting = false;
 gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, crateTexture);
+gl.bindTexture(gl.TEXTURE_2D, crateTexture); gLastGLTexture = crateTexture;
 gl.uniform1i(shaderProgram.samplerUniform, 0);
 gl.uniform1i(shaderProgram.useLightingUniform, lighting);
 */
 
 // ***** ***** ***** ***** ***** cLoveImage
-
 
 function Love_Graphics_MakeImageHandle (o) {
 	var t = lua_newtable();
@@ -263,10 +274,10 @@ function Love_Graphics_MakeImageHandle (o) {
 	t.str['getHeight']			= function (t) { return [t._data.getHeight		()]; }	// Returns the height of the Image.
 	t.str['getWidth']			= function (t) { return [t._data.getWidth		()]; }	// Returns the width of the Image.
 	
-	t.str['getFilter']			= function (t) { return NotImplemented(pre+'getFilter'); }	// Gets the filter mode for an image.
-	t.str['getWrap']			= function (t) { return NotImplemented(pre+'getWrap'); }	// Gets the wrapping properties of an Image.
-	t.str['setFilter']			= function (t) { return NotImplemented(pre+'setFilter'); }	// Sets the filter mode for an image.
-	t.str['setWrap']			= function (t) { return NotImplemented(pre+'setWrap'); }	// Sets the wrapping properties of an Image.
+	t.str['getFilter']			= function (t) { return [t._data.mode_filter_min,t._data.mode_filter_mag]; }	// Gets the filter mode for an image.
+	t.str['getWrap']			= function (t) { return [t._data.mode_warp_h,t._data.mode_warp_v]; }	// Gets the wrapping properties of an Image.
+	t.str['setFilter']			= function (t,smin,smag) { t._data.setFilter(smin,smag); }	// Sets the filter mode for an image.
+	t.str['setWrap']			= function (t,h,v) { t._data.setWrap(h,v); }	// Sets the wrapping properties of an Image.
 	
 	t.str['type']				= function (t) { return ["Image"]; 					}	// Gets the type of the object as a string.  // TODO: lowercase ???
 	t.str['typeOf']				= function (t) { return NotImplemented(pre+'typeOf'); }	// Checks whether an object is of a certain type.
@@ -274,12 +285,56 @@ function Love_Graphics_MakeImageHandle (o) {
 	return t;
 }
 
-function cLoveImage (path) {
+function cLoveImage (a) {
 	var bPixelArt = false;
-	//~ var bPixelArt = true;
-	this.path = path;
-	this.tex = loadImageTexture(gl, path, bPixelArt);
 	this.bPreLoadWarningPrinted = false;
+	this.mode_filter_min = "linear"; // linear,nearest
+	this.mode_filter_mag = "linear"; // linear,nearest
+	this.mode_warp_h = "clamp"; // clamp,repeat
+	this.mode_warp_v = "clamp"; // clamp,repeat
+	this.bIsFromCanvas = false;
+	
+	if ((typeof a) == "string") {	
+		// load image from path
+		var path = a;
+		this.path = path;
+		this.tex = loadImageTexture(gl, path, bPixelArt);
+	} else if ((typeof a) == "object") {
+		if (a._data && a._data.canvas) {
+			// load image from imagedata
+			var imgdata = a._data;
+			this.bIsFromCanvas = true;
+			this.path = "(imgdata)";
+			var texture = gl.createTexture();
+			this.tex = texture;
+			doLoadImageTexture(gl, imgdata.canvas, texture, bPixelArt);
+			//~ MainPrint("cLoveImage from imgdata:",imgdata.canvas.width);
+			this.width = imgdata.canvas.width;
+			this.height = imgdata.canvas.height;
+		} else {
+			MainPrint("cLoveImage unexpcected constructor obj:",a);
+		}
+	} else {
+		MainPrint("cLoveImage unexpcected constructor param:",a);
+	}
+	
+	this.setFilter		= function (smin,smag) {
+		this.mode_filter_min = smin;
+		this.mode_filter_mag = smag;
+		this.UpdateTexParams();
+	}
+	this.setWrap		= function (h,v) {
+		this.mode_warp_h = h;
+		this.mode_warp_v = v;
+		this.UpdateTexParams();
+	}
+	this.UpdateTexParams		= function () {
+		updateTextureParams(gl,this.tex,
+			(this.mode_filter_min == "linear")?gl.LINEAR:gl.NEAREST,
+			(this.mode_filter_mag == "linear")?gl.LINEAR:gl.NEAREST,
+			(this.mode_warp_h == "clamp")?gl.CLAMP_TO_EDGE:gl.REPEAT,
+			(this.mode_warp_v == "clamp")?gl.CLAMP_TO_EDGE:gl.REPEAT );
+	}
 	
 	this.GetTextureID	= function () { return this.tex; }
 	this.IsImage		= function () { return true; }
@@ -297,8 +352,8 @@ function cLoveImage (path) {
 			}
 		}
 	}
-	this.getWidth		= function () { this.ensureLoaded(); return this.tex.image.width; }
-	this.getHeight		= function () { this.ensureLoaded(); return this.tex.image.height; }
+	this.getWidth		= function () { if (this.bIsFromCanvas) return this.width; this.ensureLoaded(); return this.tex.image.width; }
+	this.getHeight		= function () { if (this.bIsFromCanvas) return this.height; this.ensureLoaded(); return this.tex.image.height; }
 
 }
 
@@ -492,29 +547,35 @@ function mvRotate(ang, v) {
 
 var gGLMatrix_ModelView;
 var gGLMatrix_Perspective;
-function matrixGetIdentity() { return [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ]; }
-function matrixGetSimple(tx,ty,tz, sx,sy,sz) { return [ sx,0,0,0, 0,sy,0,0, 0,0,sz,0, tx,ty,tz,1 ]; }
+var gGLMatrix_Normals;
 
 function GLModelViewScale (sx,sy,sz) {
-	gGLMatrix_ModelView[0*4+0] *= sx;
-	gGLMatrix_ModelView[1*4+1] *= sy;
-	gGLMatrix_ModelView[2*4+2] *= sz;
-	setMatrixUniforms();
-}
-function GLModelViewTranslate (tx,ty,tz) {
-	gGLMatrix_ModelView[3*4+0] += tx;
-	gGLMatrix_ModelView[3*4+1] += ty;
-	gGLMatrix_ModelView[3*4+2] += tz;
-	setMatrixUniforms();
+	matrix4Scale(gGLMatrix_ModelView,sx,sy,sz);
+	setMatrixUniforms_MV();
 }
 
-function setMatrixUniforms() {
-    //~ gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, new Float32Array(pMatrix.flatten()));
-    //~ gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, new Float32Array(mvMatrix.flatten()));
-	
-	gl.uniformMatrix4fv(shaderProgram.pMatrixUniform,  false, new Float32Array(gGLMatrix_Perspective)); // perspective
+function GLModelViewTranslate (tx,ty,tz) {
+	matrix4Translate(gGLMatrix_ModelView,tx,ty,tz);
+	setMatrixUniforms_MV();
+}
+
+var gLoveMatrix_Stack = [];
+function GLModelViewPush () { gLoveMatrix_Stack.push(matrix4Clone(gGLMatrix_ModelView)); }
+function GLModelViewPop () {
+	if (gLoveMatrix_Stack.length <= 0) { MainPrint("ERROR: GLModelViewPop: stack empty"); return; }
+	var m = gLoveMatrix_Stack.pop();
+	matrixSet(gGLMatrix_ModelView,m);
+	setMatrixUniforms_MV();
+}
+
+function setMatrixUniforms_MV() {	
 	gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, new Float32Array(gGLMatrix_ModelView)); // modelview
-	gl.uniformMatrix4fv(shaderProgram.nMatrixUniform,  false, new Float32Array(matrixGetIdentity())); // normal (unused)
+}
+
+function setMatrixUniforms() {	
+	setMatrixUniforms_MV();
+	gl.uniformMatrix4fv(shaderProgram.pMatrixUniform,  false, new Float32Array(gGLMatrix_Perspective)); // perspective
+	gl.uniformMatrix4fv(shaderProgram.nMatrixUniform,  false, new Float32Array(gGLMatrix_Normals)); // normal (unused) also when modelview?
 }
 
 function resetTransformMatrix	() {
@@ -529,9 +590,9 @@ function resetTransformMatrix	() {
 	//~ }
 	var w = gMyCanvasWidth;
 	var h = gMyCanvasHeight;
-	gGLMatrix_ModelView = matrixGetIdentity();
-	//~ gGLMatrix_Perspective = matrixGetIdentity();
-	gGLMatrix_Perspective = matrixGetSimple(-1.0,1.0,0.0, 2/w,-2/h,1);
+	gGLMatrix_ModelView = matrix4GetIdentity();
+	gGLMatrix_Perspective = matrix4GetTranslateScale(-1.0,1.0,0.0, 2/w,-2/h,1);
+	gGLMatrix_Normals = matrix4GetIdentity();
 	setMatrixUniforms();
 }
 
